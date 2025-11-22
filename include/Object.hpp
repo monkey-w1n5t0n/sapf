@@ -30,7 +30,25 @@
 
 #include <pthread.h>
 #include "RCObj.hpp"
+
+#ifdef __APPLE__
 #include <os/lock.h>
+#else
+#include <mutex>
+// Map os_unfair_lock to std::mutex for Linux
+using os_unfair_lock = std::mutex;
+// OS_UNFAIR_LOCK_INIT is usually {0} or similar on Mac.
+// Since std::mutex has a default constructor, we can make this a no-op or compatible struct initializer if needed.
+// However, it's often used as `lock = OS_UNFAIR_LOCK_INIT;` which might be tricky with std::mutex (non-copyable).
+// But looking at usage: `mutable os_unfair_lock mSpinLock = OS_UNFAIR_LOCK_INIT;`
+// We can just define it to nothing if we use the constructor, but std::mutex isn't copyable/moveable so copy-init ` = ...` might fail.
+// A safer bet is to use a wrapper or just handle the initialization differently.
+// Let's try to define it as a value that can be ignored or force C++17 guaranteed copy elision?
+// Actually, `std::mutex m = {};` is valid.
+#define OS_UNFAIR_LOCK_INIT {}
+inline void os_unfair_lock_lock(os_unfair_lock* l) { l->lock(); }
+inline void os_unfair_lock_unlock(os_unfair_lock* l) { l->unlock(); }
+#endif
 
 void post(const char* fmt, ...);
 
@@ -1497,7 +1515,12 @@ P<Form> linearizeInheritance(Thread& th, size_t numArgs, V* args);
 
 ///////////
 
+#ifdef __APPLE__
 #include <CoreFoundation/CFBase.h>
+#else
+typedef const void * CFTypeRef;
+inline void CFRelease(CFTypeRef cf) { }
+#endif
 
 class CFReleaser
 {

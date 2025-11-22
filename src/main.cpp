@@ -21,9 +21,15 @@
 #include <sys/stat.h>
 #include "primes.hpp"
 #include <complex>
+#include "Manta.h"
+
+#ifdef __APPLE__
 #include <dispatch/dispatch.h>
 #include <CoreFoundation/CoreFoundation.h>
-#include "Manta.h"
+#else
+#include <thread>
+#include <unistd.h>
+#endif
 
 class MyManta : public Manta
 {
@@ -113,6 +119,7 @@ int main (int argc, const char * argv[])
 	post("------------------------------------------------\n");	
 	post("--- version %s\n", gVersionString);
 	
+    printf("Parsing args...\n");
 	for (int i = 1; i < argc;) {
 		int c = argv[i][0];
 		if (c == '-') {
@@ -149,35 +156,40 @@ int main (int argc, const char * argv[])
 	vm.addBifHelp("Argument Automapping legend:");
 	vm.addBifHelp("   a - as is. argument is not automapped.");
 	vm.addBifHelp("   z - argument is expected to be a signal or scalar, streams are auto mapped.");
-	vm.addBifHelp("   k - argument is expected to be a scalar, signals and streams are automapped.");
-	vm.addBifHelp("");
+		vm.addBifHelp("   k - argument is expected to be a scalar, signals and streams are automapped.");
+		vm.addBifHelp("");
+		
+		AddCoreOps();
+		AddMathOps();
+		AddStreamOps();
+	    AddRandomOps();
+		AddUGenOps();
+		AddMidiOps();
+	    AddSetOps();
+		
+		vm.log_file = getenv("SAPF_LOG");
+		if (!vm.log_file) {
+			const char* home_dir = getenv("HOME");
+			char logfilename[PATH_MAX];
+			snprintf(logfilename, PATH_MAX, "%s/sapf-log.txt", home_dir);
+			vm.log_file = strdup(logfilename);
+		}
+		
+	#ifdef __APPLE__
+		__block Thread th;
+	#else
+	    Thread th;
+	#endif
 	
-	AddCoreOps();
-	AddMathOps();
-	AddStreamOps();
-    AddRandomOps();
-	AddUGenOps();
-	AddMidiOps();
-    AddSetOps();
+		auto m = manta();
+		try {
+			m->Connect();
+		} catch(...) {
+		}
+		printf("Manta %s connected.\n", m->IsConnected() ? "is" : "IS NOT");
 	
-	
-	vm.log_file = getenv("SAPF_LOG");
-	if (!vm.log_file) {
-		const char* home_dir = getenv("HOME");
-		char logfilename[PATH_MAX];
-		snprintf(logfilename, PATH_MAX, "%s/sapf-log.txt", home_dir);
-		vm.log_file = strdup(logfilename);
-	}
-	
-	__block Thread th;
 
-	auto m = manta();
-	try {
-		m->Connect();
-	} catch(...) {
-	}
-	printf("Manta %s connected.\n", m->IsConnected() ? "is" : "IS NOT");
-
+#ifdef __APPLE__
 	dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
 		/*** see at bottom for better way ***/
 		while(true) {
@@ -203,6 +215,29 @@ int main (int argc, const char * argv[])
 	});
 	
 	CFRunLoopRun();
+#else
+    std::thread mantaThread([](){
+		while(true) {
+			try {
+				MantaUSB::HandleEvents();
+				usleep(5000);
+			} catch(...) {
+				sleep(1);
+			}
+		}
+    });
+    mantaThread.detach();
+
+	if (!vm.prelude_file) {
+		vm.prelude_file = getenv("SAPF_PRELUDE");
+	}
+	if (vm.prelude_file) {
+		loadFile(th, vm.prelude_file);
+	}
+
+    // Run REPL in main thread
+    th.repl(stdin, vm.log_file);
+#endif
 	
 	return 0;
 }

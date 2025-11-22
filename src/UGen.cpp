@@ -15,16 +15,17 @@
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "UGen.hpp"
+#include "MultichannelExpansion.hpp"
 
 #include "VM.hpp"
-#include "MultichannelExpansion.hpp"
 #include "clz.hpp"
 #include <cmath>
 #include <float.h>
-#include <vector>
-#include <algorithm>
+#ifdef __APPLE__
 #include <Accelerate/Accelerate.h>
-
+#else
+#include "vDSP_shim.hpp"
+#endif
 
 
 struct MulAdd : public ThreeInputUGen<MulAdd>
@@ -94,10 +95,10 @@ struct Fadeout : Gen
 	
 	Fadeout(Thread& th, Arg a, Z sustainTime, Z fadeTime) : Gen(th, itemTypeZ, true), _a(a)
 	{
-		_sustainTime = (int64_t)floor(th.rate.sampleRate * sustainTime + .5);
-		_fadeTime = (int64_t)floor(th.rate.sampleRate * fadeTime + .5);
-		_sustainTime = std::max(1LL, _sustainTime);
-		_fadeTime = std::max(1LL, _fadeTime);
+		_sustainTime = (int)(sustainTime * th.rate.sampleRate);
+		_sustainTime = std::max((int64_t)1, _sustainTime);
+		_fadeTime = (int)(fadeTime * th.rate.sampleRate);
+		_fadeTime = std::max((int64_t)1, _fadeTime);
 		_amp = 1.001;
 		_fade = pow(.001, 1. / _fadeTime);
 	}
@@ -170,7 +171,7 @@ struct Fadein : Gen
 	Fadein(Thread& th, Arg a, Z fadeTime) : Gen(th, itemTypeZ, true), _a(a)
 	{
 		_fadeTime = (int64_t)floor(th.rate.sampleRate * fadeTime + .5);
-		_fadeTime = std::max(1LL, _fadeTime);
+		_fadeTime = std::max((int64_t)1, _fadeTime);
 		_amp = .001;
 		_fade = pow(1000., 1. / _fadeTime);
 	}
@@ -241,10 +242,10 @@ struct Endfade : Gen
 		_startupTime = (int64_t)floor(th.rate.sampleRate * startupTime + .5);
 		_holdTime = (int64_t)floor(th.rate.sampleRate * holdTime + .5);
 		_fadeTime = (int64_t)floor(th.rate.sampleRate * fadeTime + .5);
-		_startupTime = std::max(0LL, _startupTime);
-		_holdTime = std::max(1LL, _holdTime);
+		_startupTime = std::max((int64_t)0, _startupTime);
+		_holdTime = std::max((int64_t)1, _holdTime);
 		_holdTimeRemaining = _holdTime;
-		_fadeTime = std::max(1LL, _fadeTime);
+		_fadeTime = std::max((int64_t)1, _fadeTime);
 		_threshold = threshold;
 		_amp = 1.001;
 		_fade = pow(.001, 1. / _fadeTime);
@@ -4302,7 +4303,11 @@ static void ifold_(Thread& th, Prim* prim)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#ifdef __APPLE__
 #include <Carbon/Carbon.h>
+#else
+#include <unistd.h>
+#endif
 
 struct MouseUGenGlobalState {
 	float mouseX, mouseY;
@@ -4313,6 +4318,7 @@ static void* gstate_update_func(void* arg)
 {
 	MouseUGenGlobalState* gstate = &gMouseUGenGlobals;
 
+#ifdef __APPLE__
 	CGDirectDisplayID display = kCGDirectMainDisplay; // to grab the main display ID
 	CGRect bounds = CGDisplayBounds(display);
 	float rscreenWidth = 1. / bounds.size.width;
@@ -4327,6 +4333,15 @@ static void* gstate_update_func(void* arg)
 		gstate->mouseButton = GetCurrentButtonState();
 		usleep(17000);
 	}
+#else
+    // Linux stub: static mouse in center
+    for(;;) {
+        gstate->mouseX = 0.5f;
+        gstate->mouseY = 0.5f;
+        gstate->mouseButton = false;
+        usleep(17000);
+    }
+#endif
 
 	return 0;
 }

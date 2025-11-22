@@ -18,6 +18,7 @@
 #define __VM_h__
 
 #include "Object.hpp"
+#include <climits>
 #include "symbol.hpp"
 #include "rgen.hpp"
 #include <vector>

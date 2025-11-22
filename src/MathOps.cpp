@@ -18,7 +18,11 @@
 #include "clz.hpp"
 #include <ctype.h>
 #include "primes.hpp"
+#ifdef __APPLE__
 #include <Accelerate/Accelerate.h>
+#else
+#include "vDSP_shim.hpp"
+#endif
 
 
 

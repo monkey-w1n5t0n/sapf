@@ -16,7 +16,11 @@
 
 #include "Spectrogram.hpp"
 #include "makeImage.hpp"
+#ifdef __APPLE__
 #include <Accelerate/Accelerate.h>
+#else
+#include "vDSP_shim.hpp"
+#endif
 #include <math.h>
 #include <stdio.h>
 #include <string.h>

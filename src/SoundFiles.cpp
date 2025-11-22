@@ -17,9 +17,15 @@
 #include "SoundFiles.hpp"
 #include <valarray>
 
+#ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#else
+#include <cstdio>
+#endif
+
 extern char gSessionTime[256];
 
-
+#ifdef __APPLE__
 class SFReaderOutputChannel;
 
 class SFReader : public Object
@@ -308,6 +314,10 @@ ExtAudioFileRef sfcreate(Thread& th, const char* path, int numChannels, double f
 	
 	return xaf;
 }
+#else
+void sfread(Thread& th, Arg filename, int64_t offset, int64_t frames) { post("sfread not implemented on Linux\n"); }
+ExtAudioFileRef sfcreate(Thread& th, const char* path, int numChannels, double fileSampleRate, bool interleaved) { post("sfcreate not implemented on Linux\n"); return nullptr; }
+#endif
 
 std::atomic<int32_t> gFileCount = 0;
 
@@ -323,6 +333,7 @@ void makeRecordingPath(Arg filename, char* path, int len)
 	}
 }
 
+#ifdef __APPLE__
 void sfwrite(Thread& th, V& v, Arg filename, bool openIt)
 {
 	std::vector<ZIn> in;
@@ -406,3 +417,6 @@ void sfwrite(Thread& th, V& v, Arg filename, bool openIt)
 		system(cmd);
 	}
 }
+#else
+void sfwrite(Thread& th, V& v, Arg filename, bool openIt) { post("sfwrite not implemented on Linux\n"); }
+#endif

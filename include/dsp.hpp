@@ -17,7 +17,11 @@
 #ifndef __taggeddoubles__dsp__
 #define __taggeddoubles__dsp__
 
+#ifdef __APPLE__
 #include <Accelerate/Accelerate.h>
+#else
+#include "vDSP_shim.hpp"
+#endif
 
 const int kMinFFTLogSize = 2;
 const int kMaxFFTLogSize = 16;

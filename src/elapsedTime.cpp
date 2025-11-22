@@ -15,11 +15,18 @@
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "elapsedTime.hpp"
+
+#ifdef __APPLE__
 #include <mach/mach_time.h>
+#else
+#include <chrono>
+#endif
+
 #include <pthread.h>
 
 extern "C" {
 
+#ifdef __APPLE__
 static double gHostClockFreq;
 
 void initElapsedTime()
@@ -33,5 +40,21 @@ double elapsedTime()
 {
 	return (double)mach_absolute_time() / gHostClockFreq;
 }
+#else
+
+static std::chrono::steady_clock::time_point gStartTime;
+
+void initElapsedTime()
+{
+    gStartTime = std::chrono::steady_clock::now();
+}
+
+double elapsedTime()
+{
+    auto now = std::chrono::steady_clock::now();
+    std::chrono::duration<double> diff = now - gStartTime;
+    return diff.count();
+}
+#endif
 
 }

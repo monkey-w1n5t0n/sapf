@@ -18,10 +18,26 @@
 #include "VM.hpp"
 #include "UGen.hpp"
 #include "ErrorCodes.hpp"
-#include <CoreMidi/CoreMidi.h>
 #include <vector>
-#include <mach/mach_time.h>
 
+#ifdef __APPLE__
+#include <CoreMidi/CoreMidi.h>
+#include <mach/mach_time.h>
+#else
+#include <cstdint>
+#include <cstring>
+#include <cmath>
+#include <algorithm>
+using Byte = uint8_t;
+using UInt32 = uint32_t;
+using UInt16 = uint16_t;
+using MIDITimeStamp = uint64_t;
+using MIDIEndpointRef = void*;
+using MIDIClientRef = void*;
+using MIDIPortRef = void*;
+using OSStatus = int32_t;
+const OSStatus noErr = 0;
+#endif
 
 struct MidiChanState
 {
@@ -44,6 +60,7 @@ MIDIPortRef gMIDIInPort[kMaxMidiPorts], gMIDIOutPort[kMaxMidiPorts];
 int gNumMIDIInPorts = 0, gNumMIDIOutPorts = 0;
 bool gMIDIInitialized = false;
 
+#ifdef __APPLE__
 static bool gSysexFlag = false;
 static Byte gRunningStatus = 0;
 std::vector<Byte> gSysexData;
@@ -249,7 +266,9 @@ static void midiNotifyProc(const MIDINotification *message, void *refCon)
 {
 	printf("midi notification %d %d\n", (int)message->messageID, (int)message->messageSize);
 }
+#endif
 
+#ifdef __APPLE__
 static struct mach_timebase_info machTimebaseInfo() {
     struct mach_timebase_info info;
     mach_timebase_info(&info);
@@ -264,10 +283,14 @@ static MIDITimeStamp midiTime(float latencySeconds)
     MIDITimeStamp latencyMIDI = (latencyNanos / (Float64)info.numer) * (Float64)info.denom;
     return (MIDITimeStamp)mach_absolute_time() + latencyMIDI;
 }
+#else
+static MIDITimeStamp midiTime(float latencySeconds) { return 0; }
+#endif
 
 void sendmidi(int port, MIDIEndpointRef dest, int length, int hiStatus, int loStatus, int aval, int bval, float late);
 void sendmidi(int port, MIDIEndpointRef dest, int length, int hiStatus, int loStatus, int aval, int bval, float late)
 {
+#ifdef __APPLE__
 	MIDIPacketList mpktlist;
 	MIDIPacketList * pktlist = &mpktlist;
 	MIDIPacket * pk = MIDIPacketListInit(pktlist);
@@ -277,11 +300,13 @@ void sendmidi(int port, MIDIEndpointRef dest, int length, int hiStatus, int loSt
 	pk->data[2] = (Byte) bval;
 	pk = MIDIPacketListAdd(pktlist, sizeof(struct MIDIPacketList) , pk, midiTime(late), nData, pk->data);
 	/*OSStatus error =*/ MIDISend(gMIDIOutPort[port],  dest, pktlist );
+#endif
 }
 
 
 static int midiCleanUp()
 {
+#ifdef __APPLE__
 	/*
 	* do not catch errors when disposing ports
 	* MIDIClientDispose should normally dispose the ports attached to it
@@ -311,6 +336,7 @@ static int midiCleanUp()
 		}
 		gMIDIClient = 0;
 	}
+#endif
 	return errNone;
 }
 
@@ -327,6 +353,7 @@ static int midiInit(int numIn, int numOut)
 	numIn = std::clamp(numIn, 1, kMaxMidiPorts);
 	numOut = std::clamp(numOut, 1, kMaxMidiPorts);
 
+#ifdef __APPLE__
 	int enc = kCFStringEncodingMacRoman;
 	CFAllocatorRef alloc = CFAllocatorGetDefault();
 
@@ -377,6 +404,7 @@ static int midiInit(int numIn, int numOut)
 	gNumMIDIOutPorts = numOut;
 	
 	prListMIDIEndpoints();
+#endif
 	
 	return errNone;
 }
@@ -384,6 +412,7 @@ static int midiInit(int numIn, int numOut)
 
 static int prListMIDIEndpoints()
 {
+#ifdef __APPLE__
 	OSStatus error;
 	int numSrc = (int)MIDIGetNumberOfSources();
 	int numDst = (int)MIDIGetNumberOfDestinations();
@@ -457,6 +486,9 @@ static int prListMIDIEndpoints()
 		}
 		printf("MIDI Destination %2d '%s', '%s' UID: %d\n", i, cdevname, cendname, uid);
 	}
+#else
+    printf("MIDI not supported on Linux yet.\n");
+#endif
 	return errNone;
 }
 
@@ -464,6 +496,7 @@ static int prListMIDIEndpoints()
 
 static int prConnectMIDIIn(int uid, int inputIndex)
 {
+#ifdef __APPLE__
 	if (inputIndex < 0 || inputIndex >= gNumMIDIInPorts) return errOutOfRange;
 
 	MIDIEndpointRef src=0;
@@ -474,13 +507,14 @@ static int prConnectMIDIIn(int uid, int inputIndex)
 	//pass the uid to the midiReadProc to identify the src
 	void* p = (void*)(uintptr_t)inputIndex;
 	MIDIPortConnectSource(gMIDIInPort[inputIndex], src, p);
-
+#endif
 	return errNone;
 }
 
 
 static int prDisconnectMIDIIn(int uid, int inputIndex)
 {
+#ifdef __APPLE__
 	if (inputIndex < 0 || inputIndex >= gNumMIDIInPorts) return errOutOfRange;
 
 	MIDIEndpointRef src=0;
@@ -489,7 +523,7 @@ static int prDisconnectMIDIIn(int uid, int inputIndex)
 	if (mtype != kMIDIObjectType_Source) return errFailed;
 
 	MIDIPortDisconnectSource(gMIDIInPort[inputIndex], src);
-
+#endif
 	return errNone;
 }
 
@@ -501,7 +535,9 @@ static void midiStart_(Thread& th, Prim* prim)
 
 static void midiRestart_(Thread& th, Prim* prim)
 {
+#ifdef __APPLE__
 	MIDIRestart();
+#endif
 }
 
 static void midiStop_(Thread& th, Prim* prim)

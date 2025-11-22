@@ -24,7 +24,12 @@
 #include <float.h>
 #include <vector>
 #include <algorithm>
+#ifdef __APPLE__
 #include <Accelerate/Accelerate.h>
+#else
+#include "vDSP_shim.hpp"
+using UInt32 = uint32_t;
+#endif
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

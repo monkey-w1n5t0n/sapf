@@ -15,6 +15,11 @@
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "Parser.hpp"
+#include <iostream>
+#include <iomanip>
+#include <memory>
+#include <cstdarg>
+
 #include "Opcode.hpp"
 #include <ctype.h>
 #include <cmath>

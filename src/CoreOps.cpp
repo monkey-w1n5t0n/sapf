@@ -1325,8 +1325,8 @@ static void glob_(Thread& th, Prim* prim)
 	memset(&g, 0, sizeof(g));
 	glob(pat->s, GLOB_MARK, nullptr, &g);
 	
-	P<Array> a = new Array(itemTypeV, g.gl_matchc);
-	for (int i = 0; i < g.gl_matchc; ++i) {
+	P<Array> a = new Array(itemTypeV, g.gl_pathc);
+	for (int i = 0; i < g.gl_pathc; ++i) {
 		a->add(new String(g.gl_pathv[i]));
 	}
 	globfree(&g);

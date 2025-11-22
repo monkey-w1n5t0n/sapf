@@ -15,7 +15,12 @@
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include "Play.hpp"
+#ifdef __APPLE__
 #include <AudioToolbox/AudioToolbox.h>
+#else
+#define MINIAUDIO_IMPLEMENTATION
+#include "miniaudio.h"
+#endif
 #include <pthread.h>
 #include <atomic>
 
@@ -27,7 +32,7 @@ const int kMaxChannels = 32;
 
 struct AUPlayer* gAllPlayers = nullptr;
 
-
+#ifdef __APPLE__
 
 struct AUPlayer
 {
@@ -386,4 +391,179 @@ void recordWithAudioUnit(Thread& th, V& v, Arg filename)
 		}
 	}
 }
+
+#else
+// Linux Implementation
+
+struct AUPlayer
+{
+    AUPlayer(Thread& inThread, int inNumChannels)
+        : th(inThread), count(0), done(false), prev(nullptr), next(gAllPlayers), numChannels(inNumChannels)
+    { 
+        gAllPlayers = this; 
+        if (next) next->prev = this; 
+        
+        memset(&device, 0, sizeof(device));
+    }
+    
+    ~AUPlayer() {
+        if (next) next->prev = prev;
+
+        if (prev) prev->next = next;
+        else gAllPlayers = next;
+        
+        ma_device_uninit(&device);
+    }
+    
+    Thread th;
+    int count;
+    bool done;
+    AUPlayer* prev;
+    AUPlayer* next;
+    ma_device device;
+    int numChannels;
+    ZIn in[kMaxChannels];
+};
+
+static void stopPlayer(AUPlayer* player)
+{
+    ma_device_stop(&player->device);
+    delete player;
+}
+
+void stopPlaying()
+{
+    Locker lock(&gPlayerMutex);
+
+    AUPlayer* player = gAllPlayers;
+    while (player) {
+        AUPlayer* next = player->next;
+        stopPlayer(player);
+        player = next;
+    }
+}
+
+void stopPlayingIfDone()
+{
+    Locker lock(&gPlayerMutex);
+    
+    AUPlayer* player = gAllPlayers;
+    while (player) {
+        AUPlayer* next = player->next;
+        if (player->done)
+            stopPlayer(player);
+        player = next;
+    }
+}
+
+static void* stopDonePlayers(void* x)
+{
+    while(1) {
+        sleep(1);
+        stopPlayingIfDone();
+    }
+    return nullptr;
+}
+
+bool gWatchdogRunning = false;
+pthread_t watchdog;
+
+static void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
+{
+    AUPlayer* player = (AUPlayer*)pDevice->pUserData;
+    float* out = (float*)pOutput;
+    
+    if (player->done) {
+        memset(out, 0, frameCount * player->numChannels * sizeof(float));
+        return;
+    }
+    
+    bool done = true;
+    for (int i = 0; i < player->numChannels; ++i) {
+        try {
+            int n = frameCount;
+            bool imdone = player->in[i].fill(player->th, n, out + i, player->numChannels);
+            if (n < frameCount) {
+                // Zero fill remaining
+                for (int j=n; j<frameCount; ++j) {
+                    out[j * player->numChannels + i] = 0.0f;
+                }
+            }
+            done = done && imdone;
+        } catch(...) {
+            done = true;
+        }
+    }
+    
+    if (done) player->done = true;
+}
+
+void playWithAudioUnit(Thread& th, V& v)
+{
+    if (!v.isList()) wrongType("play : s", "List", v);
+
+    Locker lock(&gPlayerMutex);
+    
+    AUPlayer *player;
+    
+    if (v.isZList()) {
+        player = new AUPlayer(th, 1);
+        player->in[0].set(v);
+        player->numChannels = 1;
+    } else {
+        if (!v.isFinite()) indefiniteOp("play : s", "");
+        P<List> s = (List*)v.o();
+        s = s->pack(th, kMaxChannels);
+        if (!s()) {
+            post("Too many channels. Max is %d.\n", kMaxChannels);
+            return;
+        }
+        Array* a = s->mArray();
+        
+        int asize = (int)a->size();
+        
+        player = new AUPlayer(th, asize);
+        for (int i = 0; i < asize; ++i) {
+            player->in[i].set(a->at(i));
+        }
+        s = nullptr;
+        a = nullptr;
+    }
+    v.o = nullptr;
+    
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+        
+    if (!gWatchdogRunning) {
+        pthread_create(&watchdog, nullptr, stopDonePlayers, nullptr);
+        gWatchdogRunning = true;
+    }
+
+    {
+        ma_device_config config = ma_device_config_init(ma_device_type_playback);
+        config.playback.format   = ma_format_f32;
+        config.playback.channels = player->numChannels;
+        config.sampleRate        = (ma_uint32)vm.ar.sampleRate;
+        config.dataCallback      = data_callback;
+        config.pUserData         = player;
+        
+        if (ma_device_init(NULL, &config, &player->device) != MA_SUCCESS) {
+            post("Failed to init audio device\n");
+            delete player;
+            return;
+        }
+        
+        if (ma_device_start(&player->device) != MA_SUCCESS) {
+            post("Failed to start audio device\n");
+            delete player;
+            return;
+        }
+    }
+}
+
+void recordWithAudioUnit(Thread& th, V& v, Arg filename)
+{
+    post("recordWithAudioUnit not implemented on Linux\n");
+}
+
+#endif
 

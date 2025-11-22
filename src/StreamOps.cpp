@@ -3230,14 +3230,13 @@ struct Silence : Gen
 
 static void mum_(Thread& th, Prim* prim)
 {
-	Z t = th.popFloat("mum : duration");
+	double t = th.popFloat("mum : time");
+	int n = (int)(t * th.rate.sampleRate);
+	Arg a = th.pop();
 	
-	int64_t n = (int64_t)floor(.5 + th.rate.sampleRate * t);
-	if (isinf(t) || (n <= 0 && t > 0.)) {
-		th.push(new List(new Everz(th, 0.)));
-	} else {
-		Gen* g = new Silence(th, n);
-		th.push(new List(g));
+	if (std::isinf(t) || (n <= 0 && t > 0.)) {
+		th.push(a);
+		return;
 	}
 }
 
@@ -4093,11 +4092,10 @@ static void drop_(Thread& th, Prim* prim)
 			
 		s = s->pack(th);
 		int64_t size = s->length(th);
-		n = -n;
-		
-		int64_t remain = std::max(0LL, size - n);
-		if (remain <= 0) {
-			th.push(vm.getNil(s->elemType));
+		        n = -n;
+				
+				int64_t remain = std::max((int64_t)0, size - n);
+				if (remain <= 0) {			th.push(vm.getNil(s->elemType));
 			return;
 		}
 		

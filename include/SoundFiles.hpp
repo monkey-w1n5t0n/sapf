@@ -18,7 +18,11 @@
 #define __taggeddoubles__SoundFiles__
 
 #include "VM.hpp"
+#ifdef __APPLE__
 #include <AudioToolbox/ExtendedAudioFile.h>
+#else
+using ExtAudioFileRef = void*;
+#endif
 
 const int kMaxSFChannels = 1024;
 const int kBufSize = 1024;

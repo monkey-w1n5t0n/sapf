@@ -6,21 +6,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF) # Optional: Disables compiler extensions beyond the standard
 
-set(CMAKE_OSX_DEPLOYMENT_TARGET 11.0)
-
-option(UNIVERSAL "Build Universal Binaries" OFF)
-
-# use ccache if available
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-    message(STATUS "Found ccache in ${CCACHE_PROGRAM}")
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
-endif()
-
-
-message(STATUS "CMAKE_SYSTEM_NAME: ${CMAKE_SYSTEM_NAME}")
-
-if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET 11.0)
+    option(UNIVERSAL "Build Universal Binaries" OFF)
     if (NOT CMAKE_OSX_ARCHITECTURES)
         if(UNIVERSAL)
             set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "macOS architecture" FORCE)
@@ -31,6 +19,14 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     endif()
 endif()
 
+# use ccache if available
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    message(STATUS "Found ccache in ${CCACHE_PROGRAM}")
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+endif()
+
+message(STATUS "CMAKE_SYSTEM_NAME: ${CMAKE_SYSTEM_NAME}")
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -40,9 +36,7 @@ endif()
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
-
 add_subdirectory(libmanta)
-
 
 set(SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
 
@@ -76,20 +70,22 @@ set(CPP_SOURCES
 	${SOURCE_DIR}/VM.cpp
 )
 
-set(OBJC_SOURCES
-	${SOURCE_DIR}/makeImage.mm
-)
+if(APPLE)
+    list(APPEND CPP_SOURCES ${SOURCE_DIR}/makeImage.mm)
+else()
+    list(APPEND CPP_SOURCES ${SOURCE_DIR}/makeImage.cpp)
+endif()
 
 add_executable(
 	sapf
 	${CPP_SOURCES}
-	${OBJC_SOURCES}
 )
 
 target_include_directories(
 	sapf
 	PUBLIC
 	${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/third_party
 )
 
 target_compile_options(
@@ -110,17 +106,29 @@ target_compile_options(
 	-Wunused-variable
 )
 
-target_link_libraries(
-	sapf
-	PUBLIC
-	manta
-	-ledit
-	"-framework Accelerate"
-	"-framework AudioToolbox"
-	"-framework AudioUnit"
-	"-framework Carbon"
-	"-framework Cocoa"
-	"-framework CoreFoundation"
-	"-framework CoreMidi"
-	"-framework CoreServices"
-)
+if(APPLE)
+    target_link_libraries(
+        sapf
+        PUBLIC
+        manta
+        -ledit
+        "-framework Accelerate"
+        "-framework AudioToolbox"
+        "-framework AudioUnit"
+        "-framework Carbon"
+        "-framework Cocoa"
+        "-framework CoreFoundation"
+        "-framework CoreMidi"
+        "-framework CoreServices"
+    )
+else()
+    target_link_libraries(
+        sapf
+        PUBLIC
+        manta
+        pthread
+        dl
+        m
+        edit
+    )
+endif()
