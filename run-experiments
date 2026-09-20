@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if [[ ! -x "$root/build/gui/sapf-experiments" ]]; then
+  cmake -S "$root/gui" -B "$root/build/gui" -DCMAKE_BUILD_TYPE=Release
+  cmake --build "$root/build/gui" -j2
+fi
+exec "$root/build/gui/sapf-experiments" "$@"

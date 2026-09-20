@@ -1,0 +1,101 @@
+diff --git i/include/Object.hpp w/include/Object.hpp
+index 41a2f36..2ad86d8 100644
+--- i/include/Object.hpp
++++ w/include/Object.hpp
+@@ -18,6 +18,7 @@
+ #define __Object_h__
+ 
+ #include <assert.h>
++#include <atomic>
+ #include <stdlib.h>
+ #include <stdint.h>
+ #include <stdio.h>
+@@ -585,7 +586,7 @@ public:
+ class ZRef : public Object
+ {
+ public:
+-	Z z;
++	std::atomic<Z> z;
+ 
+ 	ZRef(Z inZ) : z(inZ) {}
+ 
+@@ -598,7 +599,7 @@ public:
+ 	virtual bool Equals(Thread& th, Arg that) override 
+ 	{
+ 		if (!that.isZRef()) return false;
+-		return z == ((ZRef*)that.o())->z;
++		return z.load(std::memory_order_relaxed) == ((ZRef*)that.o())->z.load(std::memory_order_relaxed);
+ 	}
+ 
+ 	virtual void set(Z inZ);
+@@ -606,7 +607,7 @@ public:
+ 	virtual Z derefz() const override;
+ 
+ 	virtual V chase(Thread& th, int64_t n) override {
+-		return V(z);
++		return V(z.load(std::memory_order_relaxed));
+ 	}
+ 
+ 
+diff --git i/src/Midi.cpp w/src/Midi.cpp
+index 380d881..c9d15be 100644
+--- i/src/Midi.cpp
++++ w/src/Midi.cpp
+@@ -928,7 +928,7 @@ struct ZCtl : public ZeroInputUGen<ZCtl>
+ 	
+ 	ZCtl(Thread& th, P<ZRef> const& inZRef)
+         : ZeroInputUGen<ZCtl>(th, false), _b1(1. + gMidiLagMul * th.rate.invSampleRate),
+-        zref(inZRef)
++        _y1(inZRef->z.load(std::memory_order_relaxed)), zref(inZRef)
+ 	{
+ 	}
+ 	
+@@ -938,7 +938,7 @@ struct ZCtl : public ZeroInputUGen<ZCtl>
+ 	{
+ 		Z y1 = _y1;
+ 		Z b1 = _b1;
+-        Z& ctl = zref->z;
++        const Z ctl = zref->z.load(std::memory_order_relaxed);
+ 		for (int i = 0; i < n; ++i) {
+ 			Z y0 = ctl;
+ 			out[i] = y1 = y0 + b1 * (y1 - y0);
+diff --git i/src/Object.cpp w/src/Object.cpp
+index a41e463..31af9ba 100644
+--- i/src/Object.cpp
++++ w/src/Object.cpp
+@@ -114,7 +114,7 @@ void Ref::set(Arg inV)
+ 
+ void ZRef::set(Z inZ)
+ {
+-	z = inZ;
++	z.store(inZ, std::memory_order_relaxed);
+ }
+ 
+ V Ref::deref() const
+@@ -133,7 +133,7 @@ V Ref::deref() const
+ 
+ V ZRef::deref() const
+ {
+-	return z;
++	return z.load(std::memory_order_relaxed);
+ }
+ 
+ Z Object::derefz() const
+@@ -143,7 +143,7 @@ Z Object::derefz() const
+ 
+ Z ZRef::derefz() const
+ {
+-	return z;
++	return z.load(std::memory_order_relaxed);
+ }
+ 
+ 
+@@ -778,7 +778,7 @@ void Ref::print(Thread& th, std::string& out, int depth)
+ 
+ void ZRef::print(Thread& th, std::string& out, int depth)
+ {
+-	zprintf(out, "%g ZR", z);	
++	zprintf(out, "%g ZR", z.load(std::memory_order_relaxed));	
+ }
+ 
+ void String::print(Thread& th, std::string& out, int depth)
